@@ -1,0 +1,9 @@
+uvicorn
+fastapi
+apscheduler 
+sqlalchemy
+httpx
+streamlit 
+requests
+pytest
+python-dotenv
