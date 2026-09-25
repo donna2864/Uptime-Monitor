@@ -5,31 +5,44 @@ from app.monitor import check_monitor
 
 scheduler = BackgroundScheduler()
 
-def check_due_monitors():
+def schedule_monitor(monitor_id: int, interval_seconds: int):
+    job_id = f"monitor_{monitor_id}"
+
+    scheduler.add_job(
+        check_monitor,
+        "interval",
+        seconds=interval_seconds,
+        args=[monitor_id],
+        id=job_id,
+        replace_existing = True
+    )
+    print(f"Schedule monitor {monitor_id} every {interval_seconds} seconds")
+
+def remove_monitor_job(monitor_id:int):
+    job_id = f"monitor_{monitor_id}"
+    try:
+        scheduler.remove_job(job_id)
+        print(f"Removed scheduler job for monitor {monitor_id}")
+    except Exception:
+        print(f"No scheduler job found for monitor {monitor_id}")
+
+def load_monitors():
     db = SessionLocal()
     try:
-        monitors = (
-            db.query(Monitor).filter(Monitor.active == True).all()
+        monitors=(
+            db.query(Monitor)
+            .filter(Monitor.active == True).all()
         )
-
         for monitor in monitors:
-            check_monitor(monitor.id)
+            schedule_monitor(monitor.id, monitor.interval_seconds)
 
     finally:
         db.close()
 
 def start_scheduler():
-    scheduler.add_job(
-        check_due_monitors,
-        "interval",
-        seconds=30,
-        id="uptime_monitor_job",
-        replace_existing = True
-    )
+    load_monitors()
     scheduler.start()
-
     print("Scheduler started.")
-    print("Monitoring active urls every 30 seconds")
 
 def stop_scheduler():
     if scheduler.running:

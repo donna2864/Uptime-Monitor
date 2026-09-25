@@ -1,9 +1,15 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 class MonitorCreate(BaseModel):
     name : str
     url: HttpUrl
-    interval_seconds: int = 60
+    interval_seconds: int = Field(default=60, ge=10)
+
+class MonitorUpdate(BaseModel):
+    name: str|None = None
+    url: HttpUrl | None = None
+    interval_seconds :int |None = Field(default=None, ge=10)
+    active: bool | None = None
 
 class MonitorResponse(BaseModel):
     id : int

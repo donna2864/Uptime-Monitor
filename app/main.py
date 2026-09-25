@@ -1,14 +1,25 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
+
 from app.database import Base, SessionLocal, engine
 from app.models import Monitor, CheckResult, Incident
-from app.schemas import MonitorCreate, MonitorResponse, CheckResultResponse, MonitorStatusResponse
+from app.scheduler import stop_scheduler, start_scheduler, schedule_monitor, remove_monitor_job
+from app.schemas import MonitorCreate, MonitorUpdate, MonitorResponse, CheckResultResponse, MonitorStatusResponse
 
 Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
 
 app = FastAPI(
     title = "Uptime Monitor API",
     description = "A lightweight service for monitoring APIs and websites.",
-    version = "1.0.0"
+    version = "1.0.0",
+    lifespan=lifespan
 )
 
 @app.get("/")
@@ -29,6 +40,7 @@ def create_monitor(monitor_data: MonitorCreate):
         db.add(monitor)
         db.commit()
         db.refresh(monitor)
+        schedule_monitor(monitor.id, monitor.interval_seconds)
 
         return monitor
     finally:
@@ -53,6 +65,43 @@ def get_monitor(monitor_id:int):
             raise HTTPException(
                 status_code=404, detail="Monitor not found"
             )
+        return monitor
+
+    finally:
+        db.close()
+
+@app.put("/monitors/{monitor_id}", response_model=MonitorResponse)
+def update_monitor(monitor_id:int, monitor_data:MonitorUpdate):
+    db = SessionLocal()
+    try:
+        monitor = db.get(Monitor, monitor_id)
+
+        if not monitor:
+            raise HTTPException(status_code=404,detail="Monitor not found")
+
+        if monitor_data.name is not None:
+            monitor.name = monitor_data.name
+
+        if monitor_data.url is not None:
+            monitor.url = str(monitor_data.url)
+
+        if monitor_data.interval_seconds is not None:
+            monitor.interval_seconds = monitor_data.interval_seconds
+
+        if monitor_data.active is not None:
+            monitor.active = monitor_data.active
+
+        db.commit()
+        db.refresh(monitor)
+
+        if monitor.active:
+            schedule_monitor(
+                monitor.id,
+                monitor.interval_seconds
+            )
+        else:
+            remove_monitor_job(monitor.id)
+
         return monitor
 
     finally:
@@ -150,8 +199,12 @@ def delete_monitor(monitor_id:int):
             raise HTTPException(
                 status_code=404, detail="monitor id not found"
             )
+        
+        remove_monitor_job(monitor.id)
+
         db.delete(monitor)
         db.commit()
+
         return{
             "message":"Monitor deleted successfully"
         }

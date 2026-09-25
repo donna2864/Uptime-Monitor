@@ -8,9 +8,15 @@ def check_monitor(monitor_id: int):
     db = SessionLocal()
     try:
         monitor = db.get(Monitor, monitor_id)
+        
         if not monitor:
             print(f"Monitor {monitor_id} not found")
             return
+        
+        if not monitor.active:
+            db.close()
+            return
+        
         start_time = time.perf_counter()
         try:
             response = httpx.get(
